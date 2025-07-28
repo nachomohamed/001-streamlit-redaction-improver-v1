@@ -34,7 +34,10 @@ def init_vectorstore():
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
     splits = text_splitter.split_documents(docs)
 
-    vectorstore = Chroma.from_documents(documents=splits, embedding=OpenAIEmbeddings())
+    vectorstore = Chroma.from_documents(
+        documents=splits,
+        embedding=OpenAIEmbeddings(openai_api_key=openai_api_key)
+    )    
     return vectorstore.as_retriever()
 
 retriever = init_vectorstore()
