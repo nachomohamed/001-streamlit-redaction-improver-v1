@@ -1,8 +1,14 @@
 import streamlit as st
-from langchain_community.chat_models import ChatOpenAI
-from langchain.chains import ConversationChain
-from langchain.memory import ConversationBufferMemory
 import os
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_community.vectorstores import Chroma
+from langchain_community.document_loaders import TextLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_core.prompts import ChatPromptTemplate
+from langchain.chains import create_retrieval_chain, create_stuff_documents_chain
+from langchain_community.chat_message_histories import ChatMessageHistory
+from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain_core.messages import AIMessage, HumanMessage
 
 model = "gpt-4o-mini"
 
@@ -15,41 +21,69 @@ if not openai_api_key:
     st.sidebar.warning("Please provide your OpenAI API Key.")
     st.stop()
 
-# Initialize LLM + memory
-if "conversation" not in st.session_state:
-    llm = ChatOpenAI(
-        model_name=model,
-        openai_api_key=openai_api_key,
-        temperature=0.7
-    )
-    memory = ConversationBufferMemory(return_messages=True)
-    st.session_state.conversation = ConversationChain(
-        llm=llm,
-        memory=memory,
-        verbose=False
-    )
+st.set_page_config(page_title="Juriprudencia Chatbot", layout="wide")
+st.title("⚖️ Jurisprudencia Assistant")
+
+# --- Initialize Vector Store (only once per session) ---
+@st.cache_resource
+def init_vectorstore():
+    loader = TextLoader("./data/jurisprudencia.txt")
+    docs = loader.load()
+
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+    splits = text_splitter.split_documents(docs)
+
+    vectorstore = Chroma.from_documents(documents=splits, embedding=OpenAIEmbeddings())
+    return vectorstore.as_retriever()
+
+retriever = init_vectorstore()
+
+# --- Setup LangChain ---
+system_prompt = (
+    "You are an assistant specialized in jurisprudence. Use the retrieved legal context "
+    "to answer user questions. If unsure, say you don't know. Keep answers concise and formal.\n\n"
+    "{context}"
+)
+
+prompt = ChatPromptTemplate.from_messages(
+    [("system", system_prompt), ("human", "{input}")]
+)
+
+llm = ChatOpenAI(model=model, temperature=0.3, openai_api_key=openai_api_key)
+qa_chain = create_stuff_documents_chain(llm, prompt)
+rag_chain = create_retrieval_chain(retriever, qa_chain)
+
+# --- Memory with RunnableWithMessageHistory ---
+store = {}
+
+def get_session_history(session_id: str):
+    if session_id not in store:
+        store[session_id] = ChatMessageHistory()
+    return store[session_id]
+
+conversational_rag = RunnableWithMessageHistory(
+    rag_chain, get_session_history,
+    input_messages_key="input",
+    history_messages_key="chat_history",
+    output_messages_key="answer"
+)
+
+# --- Chat UI ---
+if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Display existing messages
 for msg in st.session_state.messages:
     st.chat_message(msg["role"]).markdown(msg["content"])
 
-# User input
-if user_input := st.chat_input("Type your message..."):
-    # Add user message
-    st.session_state.messages.append({"role": "user", "content": user_input})
-    st.chat_message("user").markdown(user_input)
+if query := st.chat_input("Ask about a jurisprudencia case..."):
+    st.session_state.messages.append({"role": "user", "content": query})
+    st.chat_message("user").markdown(query)
 
-    # Get response from LangChain ConversationChain
-    response = st.session_state.conversation.predict(input=user_input)
+    response = conversational_rag.invoke(
+        {"input": query},
+        config={"configurable": {"session_id": "juris-001"}}
+    )
 
-    # Add AI response
-    st.session_state.messages.append({"role": "assistant", "content": response})
-    st.chat_message("assistant").markdown(response)
-
-# Reset chat button
-if st.sidebar.button("Reset Conversation"):
-    st.session_state.messages = []
-    st.session_state.conversation.memory.clear()
-    st.rerun()
-
+    answer = response["answer"]
+    st.session_state.messages.append({"role": "assistant", "content": answer})
+    st.chat_message("assistant").markdown(answer)
