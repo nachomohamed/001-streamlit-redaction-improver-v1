@@ -28,7 +28,7 @@ st.title("⚖️ Jurisprudencia Assistant")
 # --- Initialize Vector Store (only once per session) ---
 @st.cache_resource
 def init_vectorstore():
-    loader = TextLoader("./data/jurisprudencia.txt")
+    loader = TextLoader("jurisprudencia.txt")
     docs = loader.load()
 
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
