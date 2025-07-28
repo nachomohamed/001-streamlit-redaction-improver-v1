@@ -1,7 +1,7 @@
 import streamlit as st
 import os
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_community.vectorstores import Chroma
+from langchain_community.vectorstores import FAISS
 from langchain_community.document_loaders import TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.prompts import ChatPromptTemplate
@@ -34,10 +34,10 @@ def init_vectorstore():
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
     splits = text_splitter.split_documents(docs)
 
-    vectorstore = Chroma.from_documents(
+    vectorstore = FAISS.from_documents(
         documents=splits,
         embedding=OpenAIEmbeddings(openai_api_key=openai_api_key)
-    )    
+    )   
     return vectorstore.as_retriever()
 
 retriever = init_vectorstore()
