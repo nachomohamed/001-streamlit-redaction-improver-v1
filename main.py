@@ -1,5 +1,5 @@
 import streamlit as st
-from langchain.chat_models import ChatOpenAI
+from langchain_community.chat_models import ChatOpenAI
 from langchain.chains import ConversationChain
 from langchain.memory import ConversationBufferMemory
 import os
@@ -51,4 +51,5 @@ if user_input := st.chat_input("Type your message..."):
 if st.sidebar.button("Reset Conversation"):
     st.session_state.messages = []
     st.session_state.conversation.memory.clear()
-    st.experimental_rerun()
+    st.rerun()
+
